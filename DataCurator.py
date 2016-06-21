@@ -65,11 +65,11 @@ class Window(QtGui.QWidget):
        	self.show()
 
     def editplot(self,index):
-    	if index == 1:
+    	if index == 1: #Delete point
     		self.dlt = True
-    	elif index ==2:
+    	elif index ==2: #Add peak
     		self.addpeak = True
-    	elif index==3:
+    	elif index==3: #Add inflection
     		self.addinflect = True
 		
     def acceptdata(self):
@@ -117,48 +117,54 @@ class Window(QtGui.QWidget):
 	    	pts = self.points[self.counter]
 	    	xpts = [item for sublist in pts for item in sublist] 
 	    	if self.addpeak == True:
-	    		data = range(1,self.data.shape[0]+1)
+	    		data = range(0,self.data.shape[0])
 	    		xdata = [x for x in data if abs(x-event.xdata)<0.5]
-	    		if len(xdata)>1:
-	    			df = [abs(i-event.xdata) for i in xdata];
-	    			coord = [i for i in range(0,len(xdata)) if df[i] == min(df)];
-	    			xdata = coord[0];
-
-	    		self.points[self.counter][0].append(list(xdata)[0])
-	    		self.refreshplot()
-	    		self.addpeak = False
+	    		print event.xdata
+	    		if len(xdata)>0:
+		    		if len(xdata)>1:
+		    			df = [abs(i-event.xdata) for i in xdata];
+		    			coord = [i for i in range(0,len(xdata)) if df[i] == min(df)];
+		    			xdata = coord[0];
+		    		print self.points[self.counter][0] 
+		    		self.points[self.counter][0].append(list(xdata)[0])
+		    		self.refreshplot()
+		    		self.addpeak = False
 
 	    	if self.addinflect == True:
 	    		data = range(1,self.data.shape[0]+1)
 	    		xdata = [x for x in data if abs(x-event.xdata)<0.5]
-	    		if len(xdata)>1:
-	    			df = [abs(i-event.xdata) for i in xdata];
-	    			coord = [i for i in range(0,len(xdata)) if df[i] == min(df)];
-	    			xdata = coord[0];
+	    		if len(xdata)>0:
+		    		if len(xdata)>1:
+		    			df = [abs(i-event.xdata) for i in xdata];
+		    			coord = [i for i in range(0,len(xdata)) if df[i] == min(df)];
+		    			xdata = coord[0];
 
-	    		self.points[self.counter][1].append(list(xdata)[0])
-	    		self.refreshplot()
-	    		self.addinflect = False	
+		    		self.points[self.counter][1].append(list(xdata)[0])
+		    		self.refreshplot()
+		    		self.addinflect = False	
 
 	    	if self.dlt == True:
 	    		data = range(1,self.data.shape[0]+1)
 	    		xdata = [x for x in data if abs(x-event.xdata)<0.5]
-	    		print xdata
+	    		#print xdata
 	    		if len(xdata)>1:
 	    			df = [abs(i-event.xdata) for i in xdata];
 	    			coord = [i for i in range(0,len(xdata)) if df[i] == min(df)];
-	    			xdata = coord[0];
+	    			xdata = coord;
 	    		#Check if this point is in self.points
-	    		print xdata
+	    		#print "xdata",xdata,type(xdata)
 	    		pts = [val for sublist in self.points[self.counter] for val in sublist]
-	    		if xdata in pts:	    		
+	    		#print "pts",pts
+	    		#print xdata[0] in pts
+	    		if xdata[0] in pts:	    		
 	    		#Remove the clicked point from self.points
-		    		newpts = [list(y for y in x if y != xdata) for x in self.points[self.counter]]
-		    		print newpts
+		    		newpts = [list(y for y in x if y != xdata[0]) for x in self.points[self.counter]]
+		    		#print "newpts",newpts
 		    		self.points[self.counter] = newpts
+
 		    		self.refreshplot()
 		    		self.dlt = False
-
+		print self.points[self.counter]
 
     #def displaymessage(self,message):
     #	w = QtGui.QWidget()
