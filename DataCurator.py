@@ -294,7 +294,7 @@ class Window(QtGui.QWidget):
 		counter = 0;
 		inflect = numpy.zeros(len(peak))
 		for j in peak:
-			for i in range(j+mindistance,n-npts):
+			for i in range(j+mindistance,int(n-npts)):
 				y = x[i:i+npts]
 				a = numpy.polyfit(numpy.array(range(i-1,i+npts-1)), y, 1)
 				m[i] = a[0]
