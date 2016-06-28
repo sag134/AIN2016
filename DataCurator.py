@@ -12,9 +12,6 @@ from functools import partial
 from PyQt4.QtGui import *
 from PyQt4.QtCore import *
 
-
-
-
 class Window(QtGui.QWidget):
     def __init__(self,datainfo, parent=None):
         super(Window, self).__init__(parent)
@@ -231,10 +228,11 @@ class Window(QtGui.QWidget):
     	ax.scatter(infl,data[infl],s=75,c='k',marker='x',linewidths=3,zorder=2)		
     	if self.accepteddata[self.counter] == True:
 	    	pts = self.points[self.counter]
+	    	pts = sorted(pts,key = lambda x:x[0])
 	    	t = self.t
 	    	tmp = [];
-	    	if len(t) == len(pts):
-	    		for i in range(0,len(t)):
+	    	if len(t) >= len(pts):
+	    		for i in range(0,len(pts)):
 	    			x1 = t[i];
 	    			y1 = data[x1];
 	    			x2 = pts[i][1];
@@ -244,6 +242,8 @@ class Window(QtGui.QWidget):
 	    			ax.fill_between(x,y,data[x1:x2+1],alpha = 0.1)
 	    			tmp.append((sum(data[x1:x2+2])-sum(y)))
 			self.area[self.counter] = tmp
+		else:
+			self.area[self.counter] = [];
 			print self.area[self.counter]
     	self.canvas.draw()
 
