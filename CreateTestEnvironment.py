@@ -5,22 +5,28 @@
 
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy.io as sio
 
 class TestEnvironment():
 	def __init__(self):
 		self.x = []
 		self.y = []	
+
 	def DrawTraj(self,interpolate=True,n_sample=100,add_noise=0,noise_percent=0):
 		#interpolate is a boolean option. if True, then the test points are connected
 		#to get an interpolated trajectory, which is then sampled uniformly.
 		#if sample is false, we only interpolate
-		x_coord = [] 
-		y_coord = []
 		#Collect points
 		self.figure = plt.figure()
 		self.ax = self.figure.add_subplot(111)
 		cid = self.figure.canvas.mpl_connect('button_press_event', self.onclick)
+		cid2 = self.figure.canvas.mpl_connect('key_press_event', self.press)
 		plt.show()
+
+	def press(self,event):
+		if event.key == 'x':
+			mdict = {'x':self.pts,'y':self.y_new}
+			sio.savemat('test_traj',mdict,appendmat = True)
 
 	def onclick(self,event):
 		axes = self.ax
@@ -39,12 +45,12 @@ class TestEnvironment():
 
 		a = min(self.x)
 		b = max(self.x)
-		pts = np.linspace(a,b,50)
+		self.pts = np.linspace(a,b,200)
 		s_i = np.argsort(self.x)
 		s_x = [self.x[i] for i in s_i]
 		s_y = [self.y[i] for i in s_i]
-		y = np.interp(pts,s_x,s_y)
-		self.ax.plot(pts,y,'-+k',linewidth=2)
+		self.y_new = np.interp(self.pts,s_x,s_y)
+		self.ax.plot(self.pts,self.y_new,'-+k',linewidth=2)
 		self.figure.canvas.draw()
 		plt.show()
 
