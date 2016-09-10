@@ -14,31 +14,15 @@ from PyQt4.QtCore import *
 import copy
 
 class Window(QtGui.QWidget):
-    def __init__(self,datainfo, parent=None):
+    def __init__(self, parent=None):
         super(Window, self).__init__(parent)
-        self.default = [5,39,0.4,30,6,3,0]
-        self.t = self.default[0:2]
-        self.dlt = False
-        self.addpeak = False
-        self.addinflect = False
-        self.addSustain = False
-        self.counter = -1; #Counter to keep track of which figure we are currently at.
-        
-        self.original_data = self.GetData(datainfo);
-        self.data = copy.copy(self.original_data)
-        self.fdata = self.foldChange(self.original_data);
-        self.f = False
+        self.fname = ''
+        self.openFile = QPushButton('Open', self)
+        self.openFile.setShortcut('Ctrl+O')
+        self.openFile.clicked.connect(self.fileBrowser)
 
-        self.accepteddata = [False for i in range(0,self.data.shape[1])];
-        self.area = [[] for i in range(0,self.data.shape[1])]
-        self.FCarea = [[] for i in range(0,self.data.shape[1])]
-        #print self.data.shape
+
         self.setWindowTitle('Data Curator')
-        self.points = self.findpoints(self.data);
-        #Setting up sustain points as a list of dictionaries
-        #The list has n elements corresponding to n trajectories
-        #Each list is a list of [peak,sustain] pairs
-        self.sustain_points = [[] for x in range(0,self.data.shape[1])]
         # a figure instance to plot on
         self.figure = plt.figure()
         # this is the Canvas Widget that displays the `figure`
@@ -98,7 +82,40 @@ class Window(QtGui.QWidget):
         self.setToolTip('Interactive display for manual data curation. <b>Email sag134@pitt.edu with any feedback</b>')
         #Calling the layout function
         self.Layout()
+        self.default = [5,39,0.4,30,6,3,0,'tracksFitc']
         self.show()
+
+    def init(self):        
+        self.f = False
+        self.t = self.default[0:2]
+        self.dlt = False
+        self.addpeak = False
+        self.addinflect = False
+        self.addSustain = False
+        self.counter = 0; #Counter to keep track of which figure we are currently at.
+
+        datainfo['key'] = self.default[7]
+        self.original_data = self.GetData(datainfo);
+        self.data = copy.copy(self.original_data)
+        self.fdata = self.foldChange(self.original_data);
+
+        self.accepteddata = [False for i in range(0,self.data.shape[1])];
+        self.area = [[] for i in range(0,self.data.shape[1])]
+        self.FCarea = [[] for i in range(0,self.data.shape[1])]
+        #print self.data.shape
+        print self.data
+        self.points = self.findpoints(self.data);
+        #Setting up sustain points as a list of dictionaries
+        #The list has n elements corresponding to n trajectories
+        #Each list is a list of [peak,sustain] pairs
+        self.sustain_points = [[] for x in range(0,self.data.shape[1])]
+        self.refreshplot()
+        
+    def fileBrowser(self):
+        datainfo['path'] = str(QtGui.QFileDialog.getOpenFileName(self, 'Open file', '/home'))
+        datainfo['key'] = 'tracksFitc'
+        self.init()
+
 
     def foldChange(self,A):
         m = A.shape[1]   
@@ -143,9 +160,10 @@ class Window(QtGui.QWidget):
         l[4] = QtGui.QLabel("Min distance between a peak and its inflection")
         l[5] = QtGui.QLabel("No. of pts used to fit line (inflection calculation)")
         l[6] = QtGui.QLabel("Angle threshold (inflection calculation)")     
+        l[7] = QtGui.QLabel("Name of variable containing data")
         self.nm = {};
         fbox = QtGui.QFormLayout()
-        for i in range(0,7):
+        for i in range(0,len(l)):
             self.nm[i] = QtGui.QLineEdit();
             self.nm[i].setText(str(self.default[i]))
             fbox.addRow(l[i],self.nm[i])
@@ -157,10 +175,12 @@ class Window(QtGui.QWidget):
         res = self.msg.exec_()
 
     def ok(self):
+        typesList = [int,int,float,int,int,int,int,str]
         for i in range(0,len(self.default)):
-            self.default[i] = float(self.nm[i].text())
+            self.default[i] = typesList[i](self.nm[i].text())
         self.t = self.default[0:2]
         self.msg.close()
+        self.init()
 
     def editplot(self,index):
         if index == 1: #Delete point
@@ -186,6 +206,7 @@ class Window(QtGui.QWidget):
         # set the layout        
         hbox = QtGui.QHBoxLayout()
         hbox.addStretch(1) #Shifting the buttons to the right.
+        hbox.addWidget(self.openFile)
         hbox.addWidget(self.displayToggle)
         hbox.addWidget(self.save)
         hbox.addWidget(self.initialize)
@@ -391,7 +412,7 @@ class Window(QtGui.QWidget):
 if __name__ == '__main__':
     app = QtGui.QApplication(sys.argv)
     datainfo = {};
-    datainfo['path'] = './Fitc_Condition8.mat';
-    datainfo['key'] = 'tracksFitc'
-    main = Window(datainfo)
+    #datainfo['path'] = './Fitc_Condition8.mat';
+
+    main = Window()
     sys.exit(app.exec_())
