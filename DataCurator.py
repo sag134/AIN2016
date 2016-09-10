@@ -11,6 +11,7 @@ from peakutils.plot import plot as pplot
 from functools import partial
 from PyQt4.QtGui import *
 from PyQt4.QtCore import *
+import copy
 
 class Window(QtGui.QWidget):
     def __init__(self,datainfo, parent=None):
@@ -20,25 +21,40 @@ class Window(QtGui.QWidget):
         self.dlt = False
         self.addpeak = False
         self.addinflect = False
+        self.addSustain = False
         self.counter = -1; #Counter to keep track of which figure we are currently at.
-        self.data = self.GetData(datainfo);
+        
+        self.original_data = self.GetData(datainfo);
+        self.data = copy.copy(self.original_data)
+        self.fdata = self.foldChange(self.original_data);
+        self.f = False
+
         self.accepteddata = [False for i in range(0,self.data.shape[1])];
         self.area = [[] for i in range(0,self.data.shape[1])]
+        self.FCarea = [[] for i in range(0,self.data.shape[1])]
         #print self.data.shape
         self.setWindowTitle('Data Curator')
         self.points = self.findpoints(self.data);
+        #Setting up sustain points as a list of dictionaries
+        #The list has n elements corresponding to n trajectories
+        #Each list is a list of [peak,sustain] pairs
+        self.sustain_points = [[] for x in range(0,self.data.shape[1])]
         # a figure instance to plot on
         self.figure = plt.figure()
         # this is the Canvas Widget that displays the `figure`
         # it takes the `figure` instance as a parameter to __init__
         self.canvas = FigureCanvas(self.figure)
         #Connecting canvas to clicks
-       	cid = self.figure.canvas.mpl_connect('button_press_event',self._on_press)
-       	self.canvas.setFocusPolicy(QtCore.Qt.ClickFocus)
-       	self.canvas.setFocus()        
+        cid = self.figure.canvas.mpl_connect('button_press_event',self._on_press)
+        self.canvas.setFocusPolicy(QtCore.Qt.ClickFocus)
+        self.canvas.setFocus()        
         # this is the Navigation widget
         # it takes the Canvas widget and a parent
         self.toolbar = NavigationToolbar(self.canvas, self)
+        #Toggle display
+        self.displayToggle = QtGui.QPushButton('Fold Change display toggle',self)
+        self.displayToggle.clicked.connect(self.toggleSwitch)
+        self.displayToggle.setShortcut('f')
         # Left and right buttons to scroll through images
         self.left = QtGui.QPushButton('previous',self)
         self.left.clicked.connect(self.PlotPrevious)
@@ -55,9 +71,14 @@ class Window(QtGui.QWidget):
         self.accept.setToolTip('Accept/Reject plot. Keyboard shortcut: <b>a</b>')
         #Edit Menu
         menu = QtGui.QMenu()
-        menu.addAction('Delete point',partial(self.editplot,1))
-     	menu.addAction('Add peak point',partial(self.editplot,2))
-        menu.addAction('Add inflection point',partial(self.editplot,3))
+        delete_action = menu.addAction('Delete point',partial(self.editplot,1))
+        addPeak_action = menu.addAction('Add peak point',partial(self.editplot,2))
+        addInflection_action = menu.addAction('Add inflection point',partial(self.editplot,3))
+        addSustain_action = menu.addAction('Add sustain point',partial(self.editplot,4))
+        delete_action.setShortcut('d')
+        addPeak_action.setShortcut('p')
+        addInflection_action.setShortcut('i')
+        addSustain_action.setShortcut('q')
         self.menu = QtGui.QPushButton('Edit',self)
         self.menu.setMenu(menu)
         self.menu.setShortcut('e')
@@ -75,70 +96,97 @@ class Window(QtGui.QWidget):
         #self.initialize.clicked.connect(self.setInit)
         #Window tool tip
         self.setToolTip('Interactive display for manual data curation. <b>Email sag134@pitt.edu with any feedback</b>')
-       	#Calling the layout function
-       	self.Layout()
-       	self.show()
+        #Calling the layout function
+        self.Layout()
+        self.show()
+
+    def foldChange(self,A):
+        m = A.shape[1]   
+        B = numpy.zeros(A.shape)
+        for i in range(0,m):
+            B[:,i] = A[:,i]/A[self.t[0],i]
+        return B
+
+    def toggleSwitch(self):
+        if self.f == False:
+            self.f = True
+        else:
+            self.f = False
+
+        if self.f == False:
+            self.data = self.original_data;
+        else:
+            self.data = self.fdata;
+        self.refreshplot()
 
     def SaveStateVariables(self):
-    	results = {};
-    	results['accept'] = self.accepteddata;
-    	results['points'] = self.points.values();
-    	results['area'] = self.area;
-    	sio.savemat('results.mat',results);
-    	
-    def showdialog(self):
-		self.msg = QtGui.QDialog()
-		#msg.setIcon(QtGui.QMessageBox.Information)
-		#msg.setText("Initialize parameters here")
-		l = {};
-		l[0] = QtGui.QLabel("time point 1")
-		l[1] = QtGui.QLabel("time point 2")
-		l[2] = QtGui.QLabel("peak height threshold")
-		l[3] = QtGui.QLabel("Min distance between peaks")
-		l[4] = QtGui.QLabel("Min distance between a peak and its inflection")
-		l[5] = QtGui.QLabel("No. of pts used to fit line (inflection calculation)")
-		l[6] = QtGui.QLabel("Angle threshold (inflection calculation)")		
-		self.nm = {};
-		fbox = QtGui.QFormLayout()
-		for i in range(0,7):
-			self.nm[i] = QtGui.QLineEdit();
-			self.nm[i].setText(str(self.default[i]))
-			fbox.addRow(l[i],self.nm[i])
+        results = {};
+        results['accept'] = numpy.asarray(self.accepteddata).astype(int);
+        print self.accepteddata;
+        results['points'] = self.points.values();
+        results['area'] = self.area;
+        results['foldChangeArea'] = self.FCarea;
+        results['trajectories'] = self.original_data[:,results['accept']]
+        results['fold_change_trajectories'] = self.fdata[:,results['accept']]
 
-		buttons = QDialogButtonBox(QDialogButtonBox.Ok,Qt.Horizontal,self)
-		buttons.accepted.connect(self.ok)
-		fbox.addWidget(buttons)
-		self.msg.setLayout(fbox)
-		res = self.msg.exec_()
+        sio.savemat('results.mat',results);
+        
+    def showdialog(self):
+        self.msg = QtGui.QDialog()
+        #msg.setIcon(QtGui.QMessageBox.Information)
+        #msg.setText("Initialize parameters here")
+        l = {};
+        l[0] = QtGui.QLabel("time point 1")
+        l[1] = QtGui.QLabel("time point 2")
+        l[2] = QtGui.QLabel("peak height threshold")
+        l[3] = QtGui.QLabel("Min distance between peaks")
+        l[4] = QtGui.QLabel("Min distance between a peak and its inflection")
+        l[5] = QtGui.QLabel("No. of pts used to fit line (inflection calculation)")
+        l[6] = QtGui.QLabel("Angle threshold (inflection calculation)")     
+        self.nm = {};
+        fbox = QtGui.QFormLayout()
+        for i in range(0,7):
+            self.nm[i] = QtGui.QLineEdit();
+            self.nm[i].setText(str(self.default[i]))
+            fbox.addRow(l[i],self.nm[i])
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok,Qt.Horizontal,self)
+        buttons.accepted.connect(self.ok)
+        fbox.addWidget(buttons)
+        self.msg.setLayout(fbox)
+        res = self.msg.exec_()
 
     def ok(self):
-    	for i in range(0,len(self.default)):
-    		self.default[i] = float(self.nm[i].text())
-		self.t = self.default[0:2]
-    	self.msg.close()
+        for i in range(0,len(self.default)):
+            self.default[i] = float(self.nm[i].text())
+        self.t = self.default[0:2]
+        self.msg.close()
 
     def editplot(self,index):
-    	if index == 1: #Delete point
-    		self.dlt = True
-    	elif index ==2: #Add peak
-    		self.addpeak = True
-    	elif index==3: #Add inflection
-    		self.addinflect = True
-		
+        if index == 1: #Delete point
+            self.dlt = True
+        elif index ==2: #Add peak
+            self.addpeak = True
+        elif index==3: #Add inflection
+            self.addinflect = True
+        elif index==4:
+            self.addSustain = True
+        
     def acceptdata(self):
-    	if self.counter>=0:
-    		self.accepteddata[self.counter] = self.accept.isChecked();
-    		self.refreshplot()
+        if self.counter>=0:
+            self.accepteddata[self.counter] = self.accept.isChecked();
+            self.refreshplot()
 
     def GetData(self,datainfo):
-    	data = sio.loadmat(datainfo['path'])
-    	tr =  data[datainfo['key']]
-    	return tr
+        data = sio.loadmat(datainfo['path'])
+        tr =  data[datainfo['key']]
+        return tr
 
     def Layout(self):
         # set the layout        
         hbox = QtGui.QHBoxLayout()
         hbox.addStretch(1) #Shifting the buttons to the right.
+        hbox.addWidget(self.displayToggle)
         hbox.addWidget(self.save)
         hbox.addWidget(self.initialize)
         hbox.addWidget(self.menu)
@@ -152,177 +200,198 @@ class Window(QtGui.QWidget):
         vbox.addStretch(1)
         vbox.addLayout(hbox) #Shifting the buttons to the bottom
         self.setLayout(vbox)
-        self.setGeometry(300,300,500,500) #Setting the window size.
+        self.setGeometry(300,300,1000,1000) #Setting the window size.
         self.center() #Centering the window on the desktop
 
-    def _on_press(self,event):
-    	if self.dlt == True or self.addpeak == True or self.addinflect == True:	    	
-	    	pts = self.points[self.counter]
-	    	xpts = [item for sublist in pts for item in sublist] 
-	    	if self.addpeak == True:
-	    		data = range(0,self.data.shape[0])
-	    		xdata = [x for x in data if abs(x-event.xdata)<0.5]
-	    		if len(xdata)>0:
-		    		if len(xdata)>1:
-		    			df = [abs(i-event.xdata) for i in xdata];
-		    			coord = [i for i in range(0,len(xdata)) if df[i] == min(df)];
-		    			print "coord",coord
-		    			xdata = xdata[coord[0]];
-		    		else:
-		    			xdata = xdata[0]
-	    			newinflect = self.findinflection(self.data[:,self.counter],xdata,self.default[4],self.default[5],self.default[6])
-	    			self.points[self.counter].append((xdata,newinflect[0]))
-		    		self.refreshplot()
-		    		self.addpeak = False
+    def _on_press(self,event):         
+        if self.dlt == True or self.addpeak == True or self.addinflect == True or self.addSustain == True:   
+        #Step 1. Identify the clicked point. This is given by xdata      
+            pts = self.points[self.counter]
+            xpts = [item for sublist in pts for item in sublist] 
+            data = range(0,self.data.shape[0])
+            xdata = [x for x in data if abs(x-event.xdata)<0.5]
+            if len(xdata)>0:
+                if len(xdata)>1:
+                    df = [abs(i-event.xdata) for i in xdata];
+                    coord = [i for i in range(0,len(xdata)) if df[i] == min(df)];
+                    print "coord",coord
+                    xdata = xdata[coord[0]];
+                else:
+                    xdata = xdata[0]
 
-	    	if self.addinflect == True:
-	    		data = range(1,self.data.shape[0]+1)
-	    		xdata = [x for x in data if abs(x-event.xdata)<0.5]
-	    		if len(xdata)>0:
-		    		if len(xdata)>1:
-		    			df = [abs(i-event.xdata) for i in xdata];
-		    			coord = [i for i in range(0,len(xdata)) if df[i] == min(df)];
-		    			xdata = xdata[coord[0]];
-		    		else:
-		    			xdata = xdata[0]
-		    		self.points[self.counter] = [(val[0],val[1]) if len(val)>1 else (val[0],xdata) for val in self.points[self.counter]]
-		    		self.refreshplot()
-		    		self.addinflect = False	
+            if self.addSustain == True:
+                #Identify the peak closest to the marked sustain point
+                peaks = [tmp[0] for tmp in self.points[self.counter]]
+                if len(peaks)>0:
+                    dps = [abs(i-xdata) for i in peaks];
+                    print peaks
 
-	    	if self.dlt == True:
-	    		data = range(1,self.data.shape[0]+1)
-	    		xdata = [x for x in data if abs(x-event.xdata)<0.5]
-	    		if len(xdata)>1:
-	    			df = [abs(i-event.xdata) for i in xdata];
-	    			coord = [i for i in range(0,len(xdata)) if df[i] == min(df)];
-	    			xdata = xdata[coord[0]];
-	    		else:
-	    			xdata = xdata[0];	    		
-	    		infl = [tmp[1] for tmp in self.points[self.counter]]
-	    		peaks = [tmp[0] for tmp in self.points[self.counter]]
-	    		#Try and figure out whether we are deleting a peak or inflection
-	    		if xdata in peaks:	    		
-	    		#Remove the clicked point from self.points
-		    		newpts = [val for val in self.points[self.counter] if val[0] != xdata]
-		    		self.points[self.counter] = newpts
-		    		self.refreshplot()
-		    		self.dlt = False
-		    	elif xdata in infl:
-		    		newpts = [(val[0],val[1]) if val[1] != xdata else (val[0],) for val in self.points[self.counter]]
-		    		self.points[self.counter]= newpts
-		    		self.refreshplot()
-		    		self.dlt = False
-		    		self.addinflect = True;
-		print self.points[self.counter]
+                    ps = [peaks[j] for j in range(0,len(peaks)) if dps[j] == min(dps)]
+                    self.sustain_points[self.counter].append((ps[0],xdata))
+                    self.addSustain = False
+
+            if self.addpeak == True:
+                    newinflect = self.findinflection(self.data[:,self.counter],xdata,self.default[4],self.default[5],self.default[6])
+                    self.points[self.counter].append((xdata,newinflect[0]))
+                    self.addpeak = False
+
+            if self.addinflect == True:
+                    self.points[self.counter] = [(val[0],val[1]) if len(val)>1 else (val[0],xdata) for val in self.points[self.counter]]                    
+                    self.addinflect = False 
+
+            if self.dlt == True:             
+                infl = [tmp[1] for tmp in self.points[self.counter]]
+                peaks = [tmp[0] for tmp in self.points[self.counter]]
+                sustain = [tmp[1] for tmp in self.sustain_points[self.counter]]
+                #Try and figure out whether we are deleting a peak or inflection
+                if xdata in peaks:              
+                #Remove the clicked point from self.points
+                    newpts = [val for val in self.points[self.counter] if val[0] != xdata]
+                    self.points[self.counter] = newpts
+                    self.dlt = False
+                elif xdata in infl:
+                    newpts = [(val[0],val[1]) if val[1] != xdata else (val[0],) for val in self.points[self.counter]]
+                    self.points[self.counter]= newpts
+                    self.dlt = False
+                    self.addinflect = True;
+                elif xdata in sustain:
+                    newpts = [val for val in self.sustain_points[self.counter] if val[1] != xdata]
+                    self.sustain_points[self.counter] = newpts
+                    self.dlt = False
+            self.refreshplot()
+        print self.points[self.counter]
 
     def refreshplot(self):
-    	data = self.data[:,self.counter]
-    	ax = self.figure.add_subplot(111)
-    	ax.hold(False)
-    	ax.plot(data,'-o',picker=0.5,zorder=1)
-    	ax.hold(True)
-    	pts = self.points[self.counter]
-    	peaks = [tmp[0] for tmp in pts];
-    	infl = [tmp[1] for tmp in pts if len(tmp)>1];
-    	ax.scatter(peaks,data[peaks],s = 75,c='r',marker='x',linewidths = 3,zorder=2)
-    	ax.scatter(infl,data[infl],s=75,c='k',marker='x',linewidths=3,zorder=2)		
-    	if self.accepteddata[self.counter] == True:
-	    	pts = self.points[self.counter]
-	    	pts = sorted(pts,key = lambda x:x[0])
-	    	t = self.t
-	    	tmp = [];
-	    	if len(t) >= len(pts):
-	    		for i in range(0,len(pts)):
-	    			x1 = t[i];
-	    			y1 = data[x1];
-	    			x2 = pts[i][1];
-	    			y2 = data[x2];
-	    			x = range(int(x1),int(x2)+1)
-	    			y = [min(data[x2],data[x1]) for i in x]
-	    			ax.fill_between(x,y,data[x1:x2+1],alpha = 0.1)
-	    			tmp.append((sum(data[x1:x2+2])-sum(y)))
-			self.area[self.counter] = tmp
-		else:
-			self.area[self.counter] = [];
-			print self.area[self.counter]
-    	self.canvas.draw()
+        print self.counter
+        print self.accepteddata[self.counter]
+        data = self.data[:,self.counter]
+        ax = self.figure.add_subplot(111)
+        ax.hold(False)
+        ax.plot(data,'-o',picker=0.5,zorder=1)
+        ax.hold(True)
+        pts = self.points[self.counter]
+        peaks = [tmp[0] for tmp in pts];
+        infl = [tmp[1] for tmp in pts if len(tmp)>1];
+        ax.scatter(peaks,data[peaks],s = 75,c='r',marker='x',linewidths = 3,zorder=2)
+        ax.scatter(infl,data[infl],s=75,c='k',marker='x',linewidths=3,zorder=2)     
+        
+        dataA = self.original_data[:,self.counter]
+        dataB = self.fdata[:,self.counter]
+        if self.accepteddata[self.counter] == True:
+            pts = self.points[self.counter]
+            pts = sorted(pts,key = lambda x:x[0])
+            t = self.t
+            tmp = [];
+            tmp1 = [];
+            if len(t) >= len(pts):
+                for i in range(0,len(pts)):
+                    x1 = t[i];
+                    y1 = data[x1];
+                    x2 = pts[i][1];
+                    y2 = data[x2];
+                    x = range(int(x1),int(x2)+1)
+                    y = [min(data[x2],data[x1]) for i in x]
+                    ax.fill_between(x,y,data[x1:x2+1],alpha = 0.1)
+
+                    yA = [min(dataA[x2],dataA[x1]) for i in x]
+                    tmp.append((sum(dataA[x1:x2+2])-sum(yA)))
+
+                    yB = [min(dataB[x2],dataB[x1]) for i in x]
+                    tmp1.append((sum(dataB[x1:x2+2])-sum(yB)))
+
+            self.FCarea[self.counter] = tmp1  
+            self.area[self.counter] = tmp
+        else:
+            self.area[self.counter] = [];
+            print self.area[self.counter]
+        if len(self.sustain_points[self.counter])>0:
+            for spts in self.sustain_points[self.counter]:
+                x1 = spts[0]
+                x2 = spts[1]
+                y1 = data[x1]
+                y2 = data[x2]
+                ax.plot([x1,x2],[y1,y2],linewidth = 2,c='k')
+                ax.scatter(x2,y2,s=75,c='g',marker = 'x',linewidths=3,zorder=2)
+        ax.set_title('Trajectory number '+str(self.counter+1))
+        ax.set_xlim([0,self.data.shape[0]])
+        self.canvas.draw()
 
     def center(self):
-		qr = self.frameGeometry()
-		cp = QtGui.QDesktopWidget().availableGeometry().center()
-		qr.moveCenter(cp)
-		self.move(qr.topLeft())
+        qr = self.frameGeometry()
+        cp = QtGui.QDesktopWidget().availableGeometry().center()
+        qr.moveCenter(cp)
+        self.move(qr.topLeft())
 
     def PlotPrevious(self):
-		#Update counter to the index of the previous figure. Unless it is pointing at the first figure. Then do nothing.
-		if self.counter==0:
-			return;
-		else:
-			self.counter = self.counter - 1;
-		#Reset the radio button
-		if self.counter<len(self.accepteddata):
-			self.accept.setChecked(self.accepteddata[self.counter])
-		self.refreshplot()
+        #Update counter to the index of the previous figure. Unless it is pointing at the first figure. Then do nothing.
+        if self.counter==0:
+            return;
+        else:
+            self.counter = self.counter - 1;
+        #Reset the radio button
+        if self.counter<len(self.accepteddata):
+            self.accept.setChecked(self.accepteddata[self.counter])
+        self.refreshplot()
 
     def findpoints(self,data):
-		points = {};  	
-		print data.shape
-		for i in range(0,data.shape[1]):
-			y = data[:,i]
-			base = peakutils.baseline(y, 2) #Polynomial fitting to estimate baseline		
-			peak_indexes = peakutils.indexes(y-base, thres=self.default[2], min_dist=self.default[3])
-			inflection_indexes = self.findinflection(y,peak_indexes,self.default[4],self.default[5],self.default[6])
-			#Points are stored as (peak,inflection) pairs
-			points[i] = [(peak_indexes[j],inflection_indexes[j]) for j in range(0,len(peak_indexes))]
-		return points
+        points = {};    
+        print data.shape
+        for i in range(0,data.shape[1]):
+            y = data[:,i]
+            base = peakutils.baseline(y, 2) #Polynomial fitting to estimate baseline        
+            peak_indexes = peakutils.indexes(y-base, thres=self.default[2], min_dist=self.default[3])
+            inflection_indexes = self.findinflection(y,peak_indexes,self.default[4],self.default[5],self.default[6])
+            #Points are stored as (peak,inflection) pairs
+            points[i] = [(peak_indexes[j],inflection_indexes[j]) for j in range(0,len(peak_indexes))]
+        return points
 
     def findinflection(self,x,peak,mindistance,npts,thresh):
-		#Find one inflection per peak
-		try:
-			for i in peak:
-				dummy = 1;
-		except TypeError:
-			try:
-				dummy = peak+1;
-				peak = [];
-				peak.append(dummy-1)
-			except:
-				print('TypeError in findinflection')
-				return
-		n = x.shape[0]
-		m = numpy.zeros(n);
-		counter = 0;
-		inflect = numpy.zeros(len(peak))
-		for j in peak:
-			for i in range(j+mindistance,int(n-npts)):
-				y = x[i:i+npts]
-				a = numpy.polyfit(numpy.array(range(i-1,i+npts-1)), y, 1)
-				m[i] = a[0]
-				if m[i]>=thresh and m[i-1]<0 and i != j:
-					#print i
-					break
-			inflect[counter] = int(i);
-			counter = counter + 1;
-		return inflect
+        #Find one inflection per peak
+        try:
+            for i in peak:
+                dummy = 1;
+        except TypeError:
+            try:
+                dummy = peak+1;
+                peak = [];
+                peak.append(dummy-1)
+            except:
+                print('TypeError in findinflection')
+                return
+        n = x.shape[0]
+        m = numpy.zeros(n);
+        counter = 0;
+        inflect = numpy.zeros(len(peak))
+        for j in peak:
+            for i in range(j+mindistance,int(n-npts)):
+                y = x[i:i+npts]
+                a = numpy.polyfit(numpy.array(range(i-1,i+npts-1)), y, 1)
+                m[i] = a[0]
+                if m[i]>=thresh and m[i-1]<0 and i != j:
+                    #print i
+                    break
+            inflect[counter] = int(i);
+            counter = counter + 1;
+        return inflect
 
     def PlotNext(self):
-		#Update counter to the index of the previous figure. Unless it is pointing at the first figure. Then do nothing.
-		if self.counter==self.data.shape[1]-1:
-			return;
-		else:
-			self.counter = self.counter + 1;
-		print self.counter
-		#Reset the radio button
-		if self.counter<len(self.accepteddata):
-			self.accept.setChecked(self.accepteddata[self.counter])		
-		else:
-			self.accept.setChecked(False)
-		self.refreshplot()
+        #Update counter to the index of the previous figure. Unless it is pointing at the first figure. Then do nothing.
+        if self.counter==self.data.shape[1]-1:
+            return;
+        else:
+            self.counter = self.counter + 1;
+        print self.counter
+        #Reset the radio button
+        if self.counter<len(self.accepteddata):
+            self.accept.setChecked(self.accepteddata[self.counter])     
+        else:
+            self.accept.setChecked(False)
+        self.refreshplot()
 
 if __name__ == '__main__':
     app = QtGui.QApplication(sys.argv)
     datainfo = {};
-    datainfo['path'] = './Tr.mat';
-    datainfo['key'] = 'tr'
+    datainfo['path'] = './Fitc_Condition8.mat';
+    datainfo['key'] = 'tracksFitc'
     main = Window(datainfo)
     sys.exit(app.exec_())
