@@ -21,6 +21,10 @@ class Window(QtGui.QWidget):
         self.openFile.setShortcut('Ctrl+O')
         self.openFile.clicked.connect(self.fileBrowser)
 
+        self.openFile2 = QPushButton('Open movie info', self)
+        #self.openFile.setShortcut('Ctrl+O')
+        self.openFile2.clicked.connect(self.fileBrowser2)
+
 
         self.setWindowTitle('Data Curator')
         # a figure instance to plot on
@@ -82,7 +86,7 @@ class Window(QtGui.QWidget):
         self.setToolTip('Interactive display for manual data curation. <b>Email sag134@pitt.edu with any feedback</b>')
         #Calling the layout function
         self.Layout()
-        self.default = [5,39,0.4,30,6,3,0,'tracksFitc']
+        self.default = [5,39,0.4,30,6,3,0,'final_data']
         self.show()
 
     def init(self):        
@@ -94,8 +98,8 @@ class Window(QtGui.QWidget):
         self.addSustain = False
         self.counter = 0; #Counter to keep track of which figure we are currently at.
 
-        datainfo['key'] = self.default[7]
-        self.original_data = self.GetData(datainfo);
+        self.datainfo['key'] = self.default[7]
+        self.original_data = self.GetData(self.datainfo);
         self.data = copy.copy(self.original_data)
         self.fdata = self.foldChange(self.original_data);
 
@@ -110,11 +114,31 @@ class Window(QtGui.QWidget):
         #Each list is a list of [peak,sustain] pairs
         self.sustain_points = [[] for x in range(0,self.data.shape[1])]
         self.refreshplot()
-        
+
+    def getMovieInfo(self,extrainfo):
+        return sio.loadmat(extrainfo['path'])[extrainfo['key']]
+
     def fileBrowser(self):
-        datainfo['path'] = str(QtGui.QFileDialog.getOpenFileName(self, 'Open file', '/home'))
-        datainfo['key'] = 'tracksFitc'
+        self.datainfo = {}
+        self.datainfo['path'] = str(QtGui.QFileDialog.getOpenFileName(self, 'Open file', '/home'))
+        self.datainfo['key'] = 'tracksFitc'
         self.init()
+
+    def fileBrowser2(self):
+        extrainfo = {}
+        extrainfo['path'] = str(QtGui.QFileDialog.getOpenFileName(self, 'Open file', '/home'))
+        extrainfo['key'] = 'aind'   
+        movieinfo = self.getMovieInfo(extrainfo) 
+        moviedict = []
+        counter =  0;
+        for i in range(0,movieinfo.shape[1]):
+            counter = counter + 1;
+            for j in range(0,movieinfo.shape[0]):
+                if movieinfo[j][i]!=0:
+                    moviedict.append([counter,movieinfo[j][i]])
+                else:
+                    break
+        self.moviedict =  moviedict
 
 
     def foldChange(self,A):
@@ -139,14 +163,16 @@ class Window(QtGui.QWidget):
     def SaveStateVariables(self):
         results = {};
         results['accept'] = numpy.asarray(self.accepteddata).astype(int);
+        print len(self.accepteddata)
+        indices = [i for i in range(0,len(self.accepteddata)) if self.accepteddata[i]==1]
         print self.accepteddata;
         results['points'] = self.points.values();
         results['area'] = self.area;
         results['foldChangeArea'] = self.FCarea;
-        results['trajectories'] = self.original_data[:,results['accept']]
-        results['fold_change_trajectories'] = self.fdata[:,results['accept']]
-
-        sio.savemat('results.mat',results);
+        results['trajectories'] = self.original_data[:,indices]
+        results['fold_change_trajectories'] = self.fdata[:,indices]
+        print 'hi'
+        sio.savemat(self.datainfo['path'].strip('.mat')+'results.mat',results);
         
     def showdialog(self):
         self.msg = QtGui.QDialog()
@@ -200,12 +226,16 @@ class Window(QtGui.QWidget):
     def GetData(self,datainfo):
         data = sio.loadmat(datainfo['path'])
         tr =  data[datainfo['key']]
+        for i in range(0,tr.shape[0]):
+            for j in range(0,tr.shape[1]):
+                tr[i][j] = tr[i][j] + 1e-16
         return tr
 
     def Layout(self):
         # set the layout        
         hbox = QtGui.QHBoxLayout()
         hbox.addStretch(1) #Shifting the buttons to the right.
+        hbox.addWidget(self.openFile2)
         hbox.addWidget(self.openFile)
         hbox.addWidget(self.displayToggle)
         hbox.addWidget(self.save)
@@ -271,6 +301,7 @@ class Window(QtGui.QWidget):
                     self.points[self.counter] = newpts
                     self.dlt = False
                 elif xdata in infl:
+                    print infl
                     newpts = [(val[0],val[1]) if val[1] != xdata else (val[0],) for val in self.points[self.counter]]
                     self.points[self.counter]= newpts
                     self.dlt = False
@@ -333,7 +364,17 @@ class Window(QtGui.QWidget):
                 y2 = data[x2]
                 ax.plot([x1,x2],[y1,y2],linewidth = 2,c='k')
                 ax.scatter(x2,y2,s=75,c='g',marker = 'x',linewidths=3,zorder=2)
-        ax.set_title('Trajectory number '+str(self.counter+1))
+        flag_error = 0
+        try:
+            self.moviedict
+        except AttributeError:
+            flag_error = 1
+        if flag_error == 1:
+            prefix = ''
+        else: 
+            prefix = 'Movie number: '+str(self.moviedict[self.counter][0])+' Cell number: '+str(self.moviedict[self.counter][1])+' '
+       
+        ax.set_title(prefix+'Trajectory number '+str(self.counter+1)+'/'+str(self.data.shape[1]))
         ax.set_xlim([0,self.data.shape[0]])
         self.canvas.draw()
 
