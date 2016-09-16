@@ -202,7 +202,7 @@ class Window(QtGui.QWidget):
     def SaveStateVariables(self):
         results = {};
         results['accept'] = numpy.asarray(self.accepteddata).astype(int);
-        
+
         indices = [i for i in range(0,len(self.accepteddata)) if self.accepteddata[i]==1]
         tindices = [i for i in range(0,len(self.trashedData)) if self.trashedData[i]==1]
         dindices = [i for i in range(0,len(self.deadCellData)) if self.deadCellData[i] ==1]
@@ -214,9 +214,9 @@ class Window(QtGui.QWidget):
         results['fold_change_trajectories'] = self.fdata[:,indices]
         results['sustain_points'] = self.sustain_points
         results['trash_ID'] = numpy.asarray(self.trashedData).astype(int);
-        results['TrashedTrajectories'] = self.original_data[tindices]
+        results['TrashedTrajectories'] = self.original_data[:,tindices]
         results['IndexOfDeadCells'] = numpy.asarray(self.deadCellData).astype(int);
-        results['DeadTrajectories'] = self.original_data[dindices]
+        results['DeadTrajectories'] = self.original_data[:,dindices]
         results['TimeOfDeath'] = self.ToD
         sio.savemat(self.datainfo['path'].strip('.mat')+'results.mat',results);
         
