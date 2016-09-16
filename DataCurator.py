@@ -1,3 +1,4 @@
+import os
 import sys
 from PyQt4 import QtGui,QtCore
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
@@ -16,11 +17,11 @@ import copy
 class Window(QtGui.QWidget):
     def __init__(self, parent=None):
         super(Window, self).__init__(parent)
+
         self.fname = ''
         self.openFile = QPushButton('Open', self)
         self.openFile.setShortcut('Ctrl+O')
         self.openFile.clicked.connect(self.fileBrowser)
-
         self.openFile2 = QPushButton('Open movie info', self)
         #self.openFile.setShortcut('Ctrl+O')
         self.openFile2.clicked.connect(self.fileBrowser2)
@@ -35,7 +36,18 @@ class Window(QtGui.QWidget):
         #Connecting canvas to clicks
         cid = self.figure.canvas.mpl_connect('button_press_event',self._on_press)
         self.canvas.setFocusPolicy(QtCore.Qt.ClickFocus)
-        self.canvas.setFocus()        
+        self.canvas.setFocus()     
+
+
+        self.figure2 = plt.figure()
+        # this is the Canvas Widget that displays the `figure`
+        # it takes the `figure` instance as a parameter to __init__
+        self.canvas2 = FigureCanvas(self.figure2)
+        #Connecting canvas to clicks
+        cid2 = self.figure2.canvas.mpl_connect('button_press_event',self._on_press)
+        self.canvas2.setFocusPolicy(QtCore.Qt.ClickFocus)
+        self.canvas2.setFocus()  
+
         # this is the Navigation widget
         # it takes the Canvas widget and a parent
         self.toolbar = NavigationToolbar(self.canvas, self)
@@ -57,6 +69,18 @@ class Window(QtGui.QWidget):
         self.accept.clicked.connect(self.acceptdata)
         self.accept.setShortcut('a')
         self.accept.setToolTip('Accept/Reject plot. Keyboard shortcut: <b>a</b>')
+       
+        self.trash = QtGui.QCheckBox('Trash')
+        self.trash.clicked.connect(self.trashdata)
+        self.trash.setShortcut('t')
+
+        self.death = QtGui.QCheckBox('Death')
+        self.death.clicked.connect(self.deathdata)
+        self.death.setShortcut('x')       
+
+        self.notes = QtGui.QPushButton('Notes',self)
+        self.notes.clicked.connect(self.showNotes)
+
         #Edit Menu
         menu = QtGui.QMenu()
         delete_action = menu.addAction('Delete point',partial(self.editplot,1))
@@ -83,10 +107,10 @@ class Window(QtGui.QWidget):
         self.initialize.clicked.connect(self.showdialog)
         #self.initialize.clicked.connect(self.setInit)
         #Window tool tip
-        self.setToolTip('Interactive display for manual data curation. <b>Email sag134@pitt.edu with any feedback</b>')
+        #self.setToolTip('Interactive display for manual data curation. <b>Email sag134@pitt.edu with any feedback</b>')
         #Calling the layout function
         self.Layout()
-        self.default = [5,39,0.4,30,6,3,0,'final_data']
+        self.default = [4,39,0.4,30,6,3,0,'final_data']
         self.show()
 
     def init(self):        
@@ -96,20 +120,34 @@ class Window(QtGui.QWidget):
         self.addpeak = False
         self.addinflect = False
         self.addSustain = False
+        self.timeOfDeath = False
         self.counter = 0; #Counter to keep track of which figure we are currently at.
 
         self.datainfo['key'] = self.default[7]
+        pth = self.datainfo['path']
+        dapi_pth = pth.replace('FITC_RelA','DAPI_Nuclei')
+        if os.path.exists(dapi_pth):
+            dapi_data_info = {}
+            dapi_data_info['key'] = self.datainfo['key']
+            dapi_data_info['path'] = dapi_pth
+            self.dapi_data = self.GetData(dapi_data_info)
+        #If available, load DAPI data
+
         self.original_data = self.GetData(self.datainfo);
         self.data = copy.copy(self.original_data)
         self.fdata = self.foldChange(self.original_data);
 
         self.accepteddata = [False for i in range(0,self.data.shape[1])];
+        self.trashedData = [False for i in range(0,self.data.shape[1])]
+        self.deadCellData = [False for i in range(0,self.data.shape[1])]
+        self.notes = ['' for i in range(0,self.data.shape[1])];
         self.area = [[] for i in range(0,self.data.shape[1])]
         self.FCarea = [[] for i in range(0,self.data.shape[1])]
+        self.ToD = [[] for i in range(0,self.data.shape[1])]
         #print self.data.shape
-        print self.data
+        #print self.data
         self.points = self.findpoints(self.data);
-        #Setting up sustain points as a list of dictionaries
+        #Setting up sustain points as a list of lists
         #The list has n elements corresponding to n trajectories
         #Each list is a list of [peak,sustain] pairs
         self.sustain_points = [[] for x in range(0,self.data.shape[1])]
@@ -140,12 +178,13 @@ class Window(QtGui.QWidget):
                     break
         self.moviedict =  moviedict
 
-
     def foldChange(self,A):
         m = A.shape[1]   
         B = numpy.zeros(A.shape)
+        nm = 3
         for i in range(0,m):
-            B[:,i] = A[:,i]/A[self.t[0],i]
+            B[0:self.t[1]-nm,i] = A[0:self.t[1]-nm,i]/numpy.mean(A[0:self.t[0],i])
+            B[self.t[1]-nm:,i] = A[self.t[1]-nm:,i]/numpy.mean(A[self.t[1]-nm+1:self.t[1]+1,i])
         return B
 
     def toggleSwitch(self):
@@ -163,15 +202,22 @@ class Window(QtGui.QWidget):
     def SaveStateVariables(self):
         results = {};
         results['accept'] = numpy.asarray(self.accepteddata).astype(int);
-        print len(self.accepteddata)
+        
         indices = [i for i in range(0,len(self.accepteddata)) if self.accepteddata[i]==1]
-        print self.accepteddata;
+        tindices = [i for i in range(0,len(self.trashedData)) if self.trashedData[i]==1]
+        dindices = [i for i in range(0,len(self.deadCellData)) if self.deadCellData[i] ==1]
+
         results['points'] = self.points.values();
         results['area'] = self.area;
         results['foldChangeArea'] = self.FCarea;
         results['trajectories'] = self.original_data[:,indices]
         results['fold_change_trajectories'] = self.fdata[:,indices]
-        print 'hi'
+        results['sustain_points'] = self.sustain_points
+        results['trash_ID'] = numpy.asarray(self.trashedData).astype(int);
+        results['TrashedTrajectories'] = self.original_data[tindices]
+        results['IndexOfDeadCells'] = numpy.asarray(self.deadCellData).astype(int);
+        results['DeadTrajectories'] = self.original_data[dindices]
+        results['TimeOfDeath'] = self.ToD
         sio.savemat(self.datainfo['path'].strip('.mat')+'results.mat',results);
         
     def showdialog(self):
@@ -245,17 +291,50 @@ class Window(QtGui.QWidget):
         hbox.addWidget(self.left)
         hbox.addWidget(self.right)
         vbox = QtGui.QVBoxLayout()
+
+        hbox1 = QtGui.QHBoxLayout()
+        hbox1.addStretch(1)
+        hbox1.addWidget(self.trash)
+        hbox1.addWidget(self.death)
+        hbox1.addWidget(self.notes)
         #Vertically stacking the toolbar, canvas, and buttons bar
         vbox.addWidget(self.toolbar)
         vbox.addWidget(self.canvas)
+        vbox.addWidget(self.canvas2)
         vbox.addStretch(1)
+        vbox.addLayout(hbox1)
         vbox.addLayout(hbox) #Shifting the buttons to the bottom
         self.setLayout(vbox)
         self.setGeometry(300,300,1000,1000) #Setting the window size.
         self.center() #Centering the window on the desktop
 
+    def trashdata(self):
+        if self.counter>=0:
+            self.trashedData[self.counter] = self.trash.isChecked();
+
+    def deathdata(self):
+        if self.counter>=0:
+            self.timeOfDeath = True
+            self.deadCellData[self.counter] = self.death.isChecked();
+    
+    def showNotes(self):
+        self.msg1 = QtGui.QDialog()
+        fbox = QtGui.QFormLayout()
+        self.tmp = QtGui.QLineEdit();
+        fbox.addRow('Enter Notes:',self.tmp)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok,Qt.Horizontal,self)
+        buttons.accepted.connect(self.ok2)
+        fbox.addWidget(buttons)
+        self.msg1.setLayout(fbox)
+        res = self.msg1.exec_()
+
+    def ok2(self):
+        self.notes[self.counter] = str(self.tmp.text())
+        print self.notes
+        self.msg1.close()
+
     def _on_press(self,event):         
-        if self.dlt == True or self.addpeak == True or self.addinflect == True or self.addSustain == True:   
+        if self.dlt == True or self.addpeak == True or self.addinflect == True or self.addSustain == True or self.timeOfDeath == True:   
         #Step 1. Identify the clicked point. This is given by xdata      
             pts = self.points[self.counter]
             xpts = [item for sublist in pts for item in sublist] 
@@ -290,6 +369,10 @@ class Window(QtGui.QWidget):
                     self.points[self.counter] = [(val[0],val[1]) if len(val)>1 else (val[0],xdata) for val in self.points[self.counter]]                    
                     self.addinflect = False 
 
+            if self.timeOfDeath == True:
+                self.ToD[self.counter] = [xdata]
+                self.timeOfDeath = False
+
             if self.dlt == True:             
                 infl = [tmp[1] for tmp in self.points[self.counter]]
                 peaks = [tmp[0] for tmp in self.points[self.counter]]
@@ -310,6 +393,10 @@ class Window(QtGui.QWidget):
                     newpts = [val for val in self.sustain_points[self.counter] if val[1] != xdata]
                     self.sustain_points[self.counter] = newpts
                     self.dlt = False
+                elif xdata in self.ToD[self.counter]:
+                    self.ToD[self.counter] = []
+                    self.dlt = False
+
             self.refreshplot()
         print self.points[self.counter]
 
@@ -324,9 +411,14 @@ class Window(QtGui.QWidget):
         pts = self.points[self.counter]
         peaks = [tmp[0] for tmp in pts];
         infl = [tmp[1] for tmp in pts if len(tmp)>1];
+        
+        toD = self.ToD[self.counter]
+        if len(toD)>0:
+            ax.scatter(toD,data[toD],s =125,c='r',marker ='v',linewidths=3,zorder=2)
         ax.scatter(peaks,data[peaks],s = 75,c='r',marker='x',linewidths = 3,zorder=2)
         ax.scatter(infl,data[infl],s=75,c='k',marker='x',linewidths=3,zorder=2)     
         
+
         dataA = self.original_data[:,self.counter]
         dataB = self.fdata[:,self.counter]
         if self.accepteddata[self.counter] == True:
@@ -378,6 +470,11 @@ class Window(QtGui.QWidget):
         ax.set_xlim([0,self.data.shape[0]])
         self.canvas.draw()
 
+        ax2 = self.figure2.add_subplot(111)
+        ax2.hold(False)
+        ax2.plot(self.dapi_data[:,self.counter],'-o')
+        self.canvas2.draw()
+
     def center(self):
         qr = self.frameGeometry()
         cp = QtGui.QDesktopWidget().availableGeometry().center()
@@ -393,6 +490,8 @@ class Window(QtGui.QWidget):
         #Reset the radio button
         if self.counter<len(self.accepteddata):
             self.accept.setChecked(self.accepteddata[self.counter])
+            self.trash.setChecked(self.trashedData[self.counter])
+            self.death.setChecked(self.deadCellData[self.counter])
         self.refreshplot()
 
     def findpoints(self,data):
@@ -446,14 +545,15 @@ class Window(QtGui.QWidget):
         #Reset the radio button
         if self.counter<len(self.accepteddata):
             self.accept.setChecked(self.accepteddata[self.counter])     
+            self.trash.setChecked(self.trashedData[self.counter])
+            self.death.setChecked(self.deadCellData[self.counter])
         else:
             self.accept.setChecked(False)
+            self.trash.setChecked(False)
+            self.death.setChecked(False)
         self.refreshplot()
 
 if __name__ == '__main__':
     app = QtGui.QApplication(sys.argv)
-    datainfo = {};
-    #datainfo['path'] = './Fitc_Condition8.mat';
-
     main = Window()
     sys.exit(app.exec_())
