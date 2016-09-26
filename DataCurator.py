@@ -133,7 +133,7 @@ class Window(QtGui.QWidget):
             self.dapi_data = self.GetData(dapi_data_info)
         #If available, load DAPI data
 
-        self.original_data = self.GetData(self.datainfo);
+        self.original_data = self.moving_av_matrix(self.GetData(self.datainfo));
         self.data = copy.copy(self.original_data)
         self.fdata = self.foldChange(self.original_data);
 
@@ -178,6 +178,16 @@ class Window(QtGui.QWidget):
                     break
         self.moviedict =  moviedict
 
+    def moving_av_matrix(self,matrix):
+        new_matrix = numpy.zeros((matrix.shape[0]-2,matrix.shape[1]))
+        for i in range(0,matrix.shape[1]):
+            new_matrix[:,i] = self.moving_average(matrix[:,i])
+        return new_matrix
+    def moving_average(self,a, n=3) :
+        ret = numpy.cumsum(a, dtype=float)
+        ret[n:] = ret[n:] - ret[:-n]
+        return ret[n - 1:] / n
+
     def foldChange(self,A):
         m = A.shape[1]   
         B = numpy.zeros(A.shape)
@@ -218,6 +228,7 @@ class Window(QtGui.QWidget):
         results['IndexOfDeadCells'] = numpy.asarray(self.deadCellData).astype(int);
         results['DeadTrajectories'] = self.original_data[:,dindices]
         results['TimeOfDeath'] = self.ToD
+        results['notes']=self.notes;
         sio.savemat(self.datainfo['path'].strip('.mat')+'results.mat',results);
         
     def showdialog(self):
