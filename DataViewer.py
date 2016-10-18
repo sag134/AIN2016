@@ -113,7 +113,7 @@ class Window(QtGui.QWidget):
         #self.setToolTip('Interactive display for manual data curation. <b>Email sag134@pitt.edu with any feedback</b>')
         #Calling the layout function
         self.Layout()
-        self.default = [4,39,0.2,30,6,3,-0.0001,'final_data']
+        self.default = [4,39,0.2,30,6,3,-0.0001,2,'final_data']
         self.show()
 
     def init(self):    
@@ -125,7 +125,7 @@ class Window(QtGui.QWidget):
         self.addSustain = False
         self.timeOfDeath = False
         self.counter = 0; #Counter to keep track of which figure we are currently at.
-        self.datainfo['key'] = self.default[7]      
+        self.datainfo['key'] = self.default[8]      
         pth = self.datainfo['path']
         dapi_pth = pth.replace('FITC_RelA','DAPI_Nuclei')
         #If available, load DAPI data
@@ -136,7 +136,7 @@ class Window(QtGui.QWidget):
             self.dapi_data = self.GetData(dapi_data_info)
         self.original_data = af.movingAverageMatrix(self.GetData(self.datainfo),3); #Original data
         self.data = copy.copy(self.original_data) #Copy of original data to work with
-        self.npts = 0;
+        self.npts = self.default[7];
         self.fdata = af.foldChange(self.original_data,[range(self.t[0]-self.npts,self.t[0]+1),range(self.t[1]-self.npts,self.t[1]+1)]); #Fold Change data
         self.accepteddata = [False for i in range(0,self.data.shape[1])];
         self.trashedData = [False for i in range(0,self.data.shape[1])]
@@ -164,6 +164,7 @@ class Window(QtGui.QWidget):
         self.original_points = tmp
 
         self.t = self.default[0:2]
+        self.npts = self.default[7]
         self.fdata = af.foldChange(self.original_data,[range(self.t[0]-self.npts,self.t[0]+1),range(self.t[1]-self.npts,self.t[1]+1)]);  #Fold Change data       
         self.refreshplot()
 
@@ -181,8 +182,12 @@ class Window(QtGui.QWidget):
             counter = counter + 1; 
         counter = 0
         if 'default' in results.keys():
-            for i in results['default'].keys():
-                self.default[counter] = results['default'][i]
+            typesList = [int,int,float,int,int,int,float,int,str]
+            for j in range(0,len(self.default)):
+                print results['default'][j]
+                self.default[j] = typesList[j](results['default'][j]);
+        self.t = self.default[0:2]
+        self.npts = self.default[7]
         self.refreshplot()
 
     def getMovieInfo(self,extrainfo):
@@ -239,7 +244,7 @@ class Window(QtGui.QWidget):
             counter = counter + 1
         results = {};
         results['accept'] = numpy.asarray(self.accepteddata).astype(int);
-        results['default'] = {i:self.default[i] for i in range(0,len(self.default)-1)}
+        results['default'] =  [str(i) for i in self.default]# {i:self.default[i] for i in range(0,len(self.default)-1)}
         indices = [i for i in range(0,len(self.accepteddata)) if self.accepteddata[i]==1]
         tindices = [i for i in range(0,len(self.trashedData)) if self.trashedData[i]==1]
         dindices = [i for i in range(0,len(self.deadCellData)) if self.deadCellData[i] ==1]
@@ -271,7 +276,8 @@ class Window(QtGui.QWidget):
         l[4] = QtGui.QLabel("Min distance between a peak and its inflection")
         l[5] = QtGui.QLabel("No. of pts used to fit line (inflection calculation)")
         l[6] = QtGui.QLabel("Angle threshold (inflection calculation)")     
-        l[7] = QtGui.QLabel("Name of variable containing data")
+        l[7] = QtGui.QLabel("No. of pts in fold change calculation - 1")
+        l[8] = QtGui.QLabel("Name of variable containing data")
         self.nm = {};
         fbox = QtGui.QFormLayout()
         for i in range(0,len(l)):
@@ -286,10 +292,11 @@ class Window(QtGui.QWidget):
         res = self.msg.exec_()
 
     def ok(self):
-        typesList = [int,int,float,int,int,int,float,str]
+        typesList = [int,int,float,int,int,int,float,int,str]
         for i in range(0,len(self.default)):
             self.default[i] = typesList[i](self.nm[i].text())
         self.t = self.default[0:2]
+        self.npts = self.default[7]
         self.msg.close()
         self.reinit()
 
