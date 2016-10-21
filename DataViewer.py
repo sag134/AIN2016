@@ -162,7 +162,6 @@ class Window(QtGui.QWidget):
             if self.points[i] == self.original_points[i]:
                 self.points[i] = tmp[i]
         self.original_points = tmp
-
         self.t = self.default[0:2]
         self.npts = self.default[7]
         self.fdata = af.foldChange(self.original_data,[range(self.t[0]-self.npts,self.t[0]+1),range(self.t[1]-self.npts,self.t[1]+1)]);  #Fold Change data       
@@ -188,6 +187,7 @@ class Window(QtGui.QWidget):
                 self.default[j] = typesList[j](results['default'][j]);
         self.t = self.default[0:2]
         self.npts = self.default[7]
+        self.selectionButtons = {self.accept:self.accepteddata,self.trash:self.trashedData,self.death:self.deadCellData}
         self.refreshplot()
 
     def getMovieInfo(self,extrainfo):
@@ -507,8 +507,10 @@ class Window(QtGui.QWidget):
         else:
             self.counter = self.counter - 1;
         #Reset the radio button
+        print self.accepteddata[self.counter]
         if self.counter<len(self.accepteddata):
             for button in self.selectionButtons.keys():
+                print self.selectionButtons[button][self.counter]
                 button.setChecked(self.selectionButtons[button][self.counter])
         self.refreshplot()
 
